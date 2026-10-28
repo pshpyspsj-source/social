@@ -1,0 +1,1288 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>우리나라 행정구역 지도 탐험</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome 아이콘 -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Tone.js 사운드 합성기 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
+  <!-- Canvas Confetti 파티클 -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Jua&family=Nanum+Round:wght@400;700;800&display=swap');
+
+    body {
+      font-family: 'Nanum Round', sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+      background: radial-gradient(circle at top, #f8fafc 0%, #e2e8f0 100%);
+    }
+
+    .font-jua {
+      font-family: 'Jua', sans-serif;
+    }
+
+    /* 교과서 스타일 지도 영역 스타일 */
+    .map-container-box {
+      background: #ffffff;
+      background-image: 
+        radial-gradient(#e0f2fe 1px, transparent 1px),
+        radial-gradient(#e0f2fe 1px, #ffffff 1px);
+      background-size: 24px 24px;
+      background-position: 0 0, 12px 12px;
+    }
+
+    /* 행정구역 SVG 인터랙션 스타일 */
+    .province-path {
+      cursor: pointer;
+      stroke: #ffffff;
+      stroke-width: 1.8;
+      stroke-linejoin: round;
+      stroke-linecap: round;
+      transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .province-path:hover {
+      filter: brightness(1.08) drop-shadow(0 4px 10px rgba(15, 23, 42, 0.35));
+      stroke: #f59e0b;
+      stroke-width: 3.5;
+    }
+
+    /* 선택된 지역 강조 */
+    .province-path.active-target {
+      stroke: #dc2626 !important;
+      stroke-width: 4 !important;
+      filter: drop-shadow(0 0 12px rgba(220, 38, 38, 0.8)) !important;
+      animation: pulse-active 1.4s infinite;
+    }
+
+    @keyframes pulse-active {
+      0%, 100% { stroke-width: 3.5px; }
+      50% { stroke-width: 5.5px; }
+    }
+
+    /* 힌트 깜빡임 애니메이션 */
+    .province-path.highlight-hint {
+      animation: hint-flash 0.9s infinite alternate;
+    }
+
+    @keyframes hint-flash {
+      from { fill: #fef08a; stroke: #ca8a04; stroke-width: 3.5; }
+      to { fill: #fde047; stroke: #e11d48; stroke-width: 5.5; filter: drop-shadow(0 0 14px #e11d48); }
+    }
+
+    /* 지도 텍스트 뱃지 라벨 - 교과서 서체 느낌과 시인성 확보 */
+    .map-badge-text {
+      font-family: 'Jua', sans-serif;
+      pointer-events: none;
+      text-anchor: middle;
+      dominant-baseline: central;
+      font-size: 13.5px;
+      fill: #1e293b;
+      font-weight: 700;
+      paint-order: stroke fill;
+      stroke: #ffffff;
+      stroke-width: 3.5px;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .map-badge-city {
+      font-size: 11.5px;
+      fill: #0f172a;
+    }
+
+    .map-sub-text {
+      font-family: 'Nanum Round', sans-serif;
+      font-weight: 800;
+      font-size: 9px;
+      fill: #64748b;
+      pointer-events: none;
+      text-anchor: middle;
+    }
+
+    /* 바다 물결 글로우 효과 */
+    .coast-glow {
+      filter: blur(8px);
+      opacity: 0.45;
+      pointer-events: none;
+    }
+
+    /* 스크롤바 미려화 */
+    .custom-scroll::-webkit-scrollbar {
+      height: 6px;
+      width: 6px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 9999px;
+    }
+
+    /* 모달 바운스 효과 */
+    .pop-in {
+      animation: popIn 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    @keyframes popIn {
+      0% { transform: scale(0.65); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+  </style>
+</head>
+<body class="text-slate-800 min-h-screen flex flex-col justify-between overflow-x-hidden">
+
+  <!-- 1. 상단 내비게이션 바 -->
+  <header class="bg-white/95 backdrop-blur-md shadow-md border-b-2 border-sky-100 px-4 py-3 sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
+      <!-- 로고 및 안내 -->
+      <div class="flex items-center gap-3 cursor-pointer group" onclick="resetToExplore()">
+        <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center text-white text-2xl shadow-md group-hover:scale-105 transition-transform">
+          🇰🇷
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-2xl md:text-3xl font-jua text-sky-900 tracking-wide">
+              교과서로 만나는 대한민국 지도 탐험
+            </h1>
+            <span class="bg-emerald-600 text-white text-xs px-2.5 py-0.5 rounded-full font-bold">17개 시·도 완성본</span>
+          </div>
+          <p class="text-xs md:text-sm text-slate-500 font-semibold">특수학교 학생을 위한 직관적 위치와 지리 학습</p>
+        </div>
+      </div>
+
+      <!-- 모드 스위치 버튼들 -->
+      <div class="flex items-center gap-2 flex-wrap">
+        <button id="btn-mode-explore" onclick="setMode('explore')" class="px-4 py-2 rounded-2xl font-jua text-base transition-all shadow-sm flex items-center gap-2 bg-sky-600 text-white shadow-sky-200">
+          <i class="fa-solid fa-compass"></i> 자유 탐험
+        </button>
+        <button id="btn-mode-quiz" onclick="setMode('quiz')" class="px-4 py-2 rounded-2xl font-jua text-base transition-all shadow-sm flex items-center gap-2 bg-white text-slate-600 hover:bg-slate-100 border-2 border-slate-200">
+          <i class="fa-solid fa-bullseye text-amber-500"></i> 위치 찾기 퀴즈
+        </button>
+        <button id="btn-mode-card" onclick="setMode('card')" class="px-4 py-2 rounded-2xl font-jua text-base transition-all shadow-sm flex items-center gap-2 bg-white text-slate-600 hover:bg-slate-100 border-2 border-slate-200">
+          <i class="fa-solid fa-shapes text-emerald-500"></i> 카드 매칭
+        </button>
+      </div>
+
+      <!-- 소리 및 재발화 버튼 -->
+      <div class="flex items-center gap-2">
+        <button id="tts-toggle" onclick="toggleTTS()" title="음성 안내 켜기/끄기" class="w-11 h-11 rounded-2xl bg-amber-100 text-amber-800 hover:bg-amber-200 flex items-center justify-center text-lg shadow-sm border border-amber-300">
+          <i class="fa-solid fa-volume-high" id="tts-icon"></i>
+        </button>
+        <button onclick="repeatGuidance()" title="음성 다시 듣기" class="px-3.5 py-2.5 rounded-2xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-jua text-sm flex items-center gap-1.5 border border-indigo-200 shadow-sm">
+          <i class="fa-solid fa-rotate-right"></i> 다시 듣기
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 2. 메인 콘텐츠 (좌측 실제 교과서 스타일 SVG 지도 / 우측 카드 및 퀴즈) -->
+  <main class="max-w-7xl w-full mx-auto p-3 md:p-6 flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+    
+    <!-- 좌측: 대한민국 정통 지도 섹션 (7컬럼) -->
+    <section class="lg:col-span-7 bg-white rounded-3xl p-3 md:p-5 shadow-xl border-4 border-slate-200 flex flex-col items-center relative">
+      
+      <!-- 안내 바 -->
+      <div id="instruction-bar" class="w-full bg-gradient-to-r from-sky-50 to-indigo-50 text-sky-950 border-2 border-sky-200 rounded-2xl px-4 py-2.5 mb-2 flex items-center justify-between text-base md:text-lg font-jua shadow-sm">
+        <div class="flex items-center gap-2">
+          <span class="text-2xl" id="inst-icon">👆</span>
+          <span id="inst-text">지도에서 알고 싶은 곳을 콕 눌러보세요!</span>
+        </div>
+        <button id="hint-btn" onclick="giveHint()" class="hidden px-3 py-1 bg-amber-400 hover:bg-amber-300 text-amber-950 rounded-xl text-sm font-jua shadow transition">
+          💡 반짝 힌트
+        </button>
+      </div>
+
+      <!-- 지도 캔버스 컨테이너 (사회과 부도 및 교과서 도안 표준 규격) -->
+      <div class="w-full relative flex justify-center items-center overflow-hidden py-1 min-h-[580px] rounded-2xl map-container-box border border-slate-200">
+        <svg id="korea-map" viewBox="0 0 650 780" class="w-full max-w-[550px] h-auto select-none">
+          <defs>
+            <!-- 해안선 푸른빛 글로우 필터 -->
+            <filter id="coastal-glow" x="-20%" y="-20%" width="140%" height="140%">
+              <feGaussianBlur in="SourceGraphic" stdDeviation="6" />
+            </filter>
+            <!-- 섬 인셋 박스 음영 -->
+            <filter id="box-shadow" x="-10%" y="-10%" width="120%" height="120%">
+              <feDropShadow dx="1" dy="2" stdDeviation="2" flood-color="#64748b" flood-opacity="0.2"/>
+            </filter>
+          </defs>
+
+          <!-- 0. 한반도 해안선 푸른 물결 배경 후광 (바다 강조) -->
+          <g id="coast-glow-layer">
+            <path class="coast-glow" fill="#38bdf8" d="M 370 30 C 420 120, 480 200, 490 280 C 495 360, 500 400, 485 450 C 470 500, 420 540, 360 550 C 260 580, 180 570, 160 520 C 140 460, 150 400, 160 320 C 150 260, 190 180, 240 100 C 300 40, 350 25, 370 30 Z" />
+            <ellipse class="coast-glow" cx="210" cy="710" rx="65" ry="35" fill="#38bdf8" />
+          </g>
+
+          <!-- 1. 배경 장식, 바다 명칭 및 방위표 -->
+          <g id="map-decorations">
+            <!-- 바다 표기 (사회과 부도 표준) -->
+            <text x="80" y="420" font-family="Jua" font-size="20" fill="#0284c7" opacity="0.45" letter-spacing="4">황 해 (서 해)</text>
+            <text x="495" y="380" font-family="Jua" font-size="20" fill="#0284c7" opacity="0.45" letter-spacing="4">동 해</text>
+            <text x="270" y="605" font-family="Jua" font-size="18" fill="#0284c7" opacity="0.45" letter-spacing="3">남 해</text>
+
+            <!-- 휴전선(군사분계선 - 붉은 점선 교과서 스타일) -->
+            <path d="M 235 97 Q 270 95, 305 78 T 375 28" fill="none" stroke="#ef4444" stroke-width="2.5" stroke-dasharray="5,4"/>
+            <text x="275" y="70" font-family="Jua" font-size="11" fill="#b91c1c">휴전선(군사분계선)</text>
+
+            <!-- 교과서 표준 방위표 -->
+            <g transform="translate(60, 80)">
+              <circle cx="0" cy="0" r="24" fill="#ffffff" stroke="#94a3b8" stroke-width="1.8" filter="url(#box-shadow)"/>
+              <polygon points="0,-20 4,-3 -4,-3" fill="#ef4444"/>
+              <polygon points="0,20 4,3 -4,3" fill="#3b82f6"/>
+              <polygon points="20,0 3,4 3,-4" fill="#64748b"/>
+              <polygon points="-20,0 -3,4 -3,-4" fill="#64748b"/>
+              <text x="0" y="-8" text-anchor="middle" font-size="10" font-weight="bold" fill="#ef4444" font-family="Jua">북</text>
+              <text x="0" y="16" text-anchor="middle" font-size="10" font-weight="bold" fill="#3b82f6" font-family="Jua">남</text>
+              <text x="13" y="3" text-anchor="middle" font-size="9" font-weight="bold" fill="#64748b" font-family="Jua">동</text>
+              <text x="-13" y="3" text-anchor="middle" font-size="9" font-weight="bold" fill="#64748b" font-family="Jua">서</text>
+            </g>
+          </g>
+
+          <!-- 2. 대한민국 17개 시·도 행정구역 실제 윤곽 (교과서 색상 체계 반영) -->
+          <g id="regions-group">
+            
+            <!-- [4] 강원도 / 강원특별자치도 : 황갈색(#c8ad8d) -->
+            <path id="reg-gangwon" class="province-path" fill="#c8ad8d"
+              d="M 252 88
+                 C 285 80, 325 65, 375 28
+                 C 385 45, 410 115, 435 175
+                 C 455 220, 485 270, 480 300
+                 C 445 308, 415 315, 385 305
+                 C 365 300, 350 280, 325 285
+                 C 305 288, 290 270, 295 240
+                 C 300 200, 290 145, 275 125
+                 C 265 110, 255 98, 252 88 Z"
+              data-id="gangwon" />
+
+            <!-- [3] 경기도 : 하늘색(#70b9d6) -->
+            <path id="reg-gyeonggi" class="province-path" fill="#70b9d6"
+              d="M 235 97
+                 C 245 92, 250 90, 252 88
+                 C 255 98, 265 110, 275 125
+                 C 290 145, 300 200, 295 240
+                 C 275 255, 240 260, 205 255
+                 C 190 248, 185 235, 175 210
+                 C 168 185, 172 165, 185 140
+                 C 192 125, 215 110, 235 97 Z"
+              data-id="gyeonggi" />
+
+            <!-- [2] 인천광역시 : 분홍/자주색(#e26d85) - 강화도, 영종도, 옹진군 섬 포함 -->
+            <g id="reg-incheon" class="province-path" data-id="incheon" fill="#e26d85">
+              <!-- 인천 본토 및 영종도 -->
+              <path d="M 172 178 C 182 172, 192 180, 192 195 C 190 210, 178 215, 168 212 C 160 205, 162 188, 172 178 Z" />
+              <!-- 강화도 -->
+              <path d="M 170 135 C 182 128, 192 135, 190 152 C 185 162, 170 162, 165 150 C 162 140, 165 136, 170 135 Z" />
+              <!-- 영종도/용유도 -->
+              <ellipse cx="152" cy="190" rx="9" ry="7" />
+              <!-- 백령도/대청도 (서해 최북단) -->
+              <circle cx="102" cy="115" r="5" />
+              <circle cx="106" cy="123" r="3.5" />
+            </g>
+
+            <!-- [1] 서울특별시 : 밝은 핑크색(#ec8ea3) -->
+            <path id="reg-seoul" class="province-path" fill="#ec8ea3"
+              d="M 215 168
+                 C 230 162, 242 168, 244 182
+                 C 245 195, 235 204, 222 205
+                 C 210 205, 202 195, 204 182
+                 C 205 174, 208 170, 215 168 Z"
+              data-id="seoul" />
+
+            <!-- [5] 충청북도 : 주황-코랄(#e88778) - 내륙도 -->
+            <path id="reg-chungbuk" class="province-path" fill="#e88778"
+              d="M 295 240
+                 C 305 270, 325 288, 350 285
+                 C 375 285, 385 305, 385 305
+                 C 390 325, 375 350, 355 365
+                 C 340 375, 325 385, 310 370
+                 C 295 355, 290 325, 275 310
+                 C 265 290, 270 265, 295 240 Z"
+              data-id="chungbuk" />
+
+            <!-- [6] 충청남도 : 청록-연두(#66bb9a) - 태안반도 실제 굴곡 반영 -->
+            <path id="reg-chungnam" class="province-path" fill="#66bb9a"
+              d="M 205 255
+                 C 240 260, 265 290, 275 310
+                 C 255 330, 255 360, 240 380
+                 C 220 395, 195 400, 185 375
+                 C 175 350, 180 320, 188 300
+                 C 170 295, 140 290, 138 270
+                 C 135 250, 160 250, 175 268
+                 C 185 255, 195 254, 205 255 Z"
+              data-id="chungnam" />
+
+            <!-- [8] 세종특별자치시 : 녹색(#38a169) -->
+            <path id="reg-sejong" class="province-path" fill="#38a169"
+              d="M 248 308
+                 C 258 305, 264 314, 262 324
+                 C 258 333, 246 332, 244 322
+                 C 242 314, 245 309, 248 308 Z"
+              data-id="sejong" />
+
+            <!-- [7] 대전광역시 : 자주/보라(#b8759e) -->
+            <path id="reg-daejeon" class="province-path" fill="#b8759e"
+              d="M 264 340
+                 C 278 336, 286 348, 283 360
+                 C 278 370, 264 370, 260 358
+                 C 258 350, 261 342, 264 340 Z"
+              data-id="daejeon" />
+
+            <!-- [9] 전북특별자치도 : 부드러운 청보라(#716cb0) -->
+            <path id="reg-jeonbuk" class="province-path" fill="#716cb0"
+              d="M 185 375
+                 C 195 400, 220 395, 240 380
+                 C 255 360, 295 355, 310 370
+                 C 320 400, 325 430, 310 445
+                 C 290 460, 250 465, 220 460
+                 C 195 450, 175 435, 172 410
+                 C 170 390, 178 380, 185 375 Z"
+              data-id="jeonbuk" />
+
+            <!-- [10] 광주광역시 : 밝은 풀색(#99cf64) -->
+            <path id="reg-gwangju" class="province-path" fill="#99cf64"
+              d="M 208 492
+                 C 220 487, 230 494, 228 506
+                 C 225 516, 212 516, 207 506
+                 C 204 499, 206 493, 208 492 Z"
+              data-id="gwangju" />
+
+            <!-- [11] 전라남도 : 연두색(#7cb342) - 다도해 군도 반영 -->
+            <g id="reg-jeonnam" class="province-path" data-id="jeonnam" fill="#7cb342">
+              <!-- 전남 본토 -->
+              <path d="M 172 410
+                       C 175 435, 195 450, 220 460
+                       C 250 465, 290 460, 310 445
+                       C 318 470, 315 500, 305 528
+                       C 285 550, 240 555, 200 540
+                       C 165 520, 155 460, 172 410 Z" />
+              <!-- 완도, 진도, 신안 다도해 섬들 -->
+              <ellipse cx="145" cy="485" rx="8" ry="12" />
+              <ellipse cx="138" cy="515" rx="10" ry="14" />
+              <circle cx="165" cy="545" r="7" />
+              <circle cx="215" cy="560" r="8" />
+              <circle cx="245" cy="565" r="7" />
+              <circle cx="280" cy="552" r="6" />
+            </g>
+
+            <!-- [13] 경상북도 : 짙은 청록(#3b8f85) -->
+            <path id="reg-gyeongbuk" class="province-path" fill="#3b8f85"
+              d="M 385 305
+                 C 415 315, 445 308, 480 300
+                 C 492 335, 498 385, 495 425
+                 C 475 440, 445 445, 430 435
+                 C 405 435, 395 420, 385 405
+                 C 370 410, 345 400, 335 385
+                 C 355 365, 375 350, 385 305 Z"
+              data-id="gyeongbuk" />
+
+            <!-- [12] 대구광역시 : 갈색(#77584e) -->
+            <path id="reg-daegu" class="province-path" fill="#77584e"
+              d="M 390 382
+                 C 406 376, 418 388, 414 405
+                 C 408 418, 392 418, 386 404
+                 C 382 395, 385 385, 390 382 Z"
+              data-id="daegu" />
+
+            <!-- [16] 울산광역시 : 핑크/코랄(#e35b78) -->
+            <path id="reg-ulsan" class="province-path" fill="#e35b78"
+              d="M 462 422
+                 C 480 416, 490 430, 486 448
+                 C 478 460, 462 460, 456 446
+                 C 453 436, 458 426, 462 422 Z"
+              data-id="ulsan" />
+
+            <!-- [14] 경상남도 : 산뜻한 노란색(#f7d358) -->
+            <g id="reg-gyeongnam" class="province-path" data-id="gyeongnam" fill="#f7d358">
+              <!-- 경남 본토 -->
+              <path d="M 310 445
+                       C 325 430, 370 410, 385 405
+                       C 395 420, 405 435, 430 435
+                       C 445 445, 475 440, 456 446
+                       C 450 480, 440 500, 415 510
+                       C 385 535, 345 545, 305 528
+                       C 315 500, 318 470, 310 445 Z" />
+              <!-- 거제도 및 남해군 섬 -->
+              <ellipse cx="370" cy="540" rx="14" ry="11" />
+              <circle cx="330" cy="542" r="9" />
+            </g>
+
+            <!-- [15] 부산광역시 : 연주황(#f39c6b) -->
+            <path id="reg-busan" class="province-path" fill="#f39c6b"
+              d="M 432 465
+                 C 452 458, 464 472, 458 492
+                 C 446 505, 428 502, 422 488
+                 C 419 478, 425 468, 432 465 Z"
+              data-id="busan" />
+
+            <!-- [17] 제주특별자치도 : 연분홍(#f0b0c8) 타원 화산섬 -->
+            <g id="reg-jeju" class="province-path" data-id="jeju" fill="#f0b0c8">
+              <ellipse cx="205" cy="710" rx="55" ry="28" />
+              <!-- 우도, 마라도 -->
+              <circle cx="267" cy="700" r="3.5" />
+              <circle cx="178" cy="738" r="2.5" />
+            </g>
+          </g>
+
+          <!-- 3. 교과서 표준 영토 인셋 박스 (울릉도/독도 & 이어도) -->
+          <g id="inset-boxes">
+            <!-- 울릉도 / 독도 인셋 박스 -->
+            <g id="inset-dokdo" transform="translate(505, 230)">
+              <!-- 박스 프레임 -->
+              <rect x="0" y="0" width="130" height="135" fill="#ffffff" stroke="#334155" stroke-width="1.8" filter="url(#box-shadow)"/>
+              
+              <!-- 울릉도 구역 (좌측) -->
+              <g class="province-path" data-id="gyeongbuk" fill="#3b8f85">
+                <path d="M 30 52 C 34 46, 48 46, 52 53 C 54 62, 46 72, 36 71 C 28 70, 26 58, 30 52 Z" />
+                <circle cx="53" cy="50" r="2.5" fill="#3b8f85" />
+              </g>
+              <text x="38" y="85" font-family="Jua" font-size="12" fill="#1e293b" text-anchor="middle">울릉도</text>
+
+              <!-- 내부 분리선 -->
+              <line x1="72" y1="5" x2="72" y2="130" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="2,2"/>
+
+              <!-- 독도 구역 (우측 - 동도 & 서도) -->
+              <g class="province-path" data-id="gyeongbuk" fill="#3b8f85">
+                <!-- 서도 -->
+                <polygon points="90,56 94,52 98,58 95,64 90,62" />
+                <!-- 동도 -->
+                <polygon points="103,57 108,54 112,60 107,65 102,63" />
+              </g>
+              <text x="102" y="85" font-family="Jua" font-size="12" fill="#1e293b" font-weight="bold" text-anchor="middle">독도</text>
+              <text x="102" y="100" font-family="Jua" font-size="9" fill="#e11d48" font-weight="bold" text-anchor="middle">(우리 땅)</text>
+            </g>
+
+            <!-- 이어도 종합해양과학기지 인셋 박스 -->
+            <g id="inset-ieodo" transform="translate(45, 705)">
+              <rect x="0" y="0" width="85" height="45" fill="#ffffff" stroke="#334155" stroke-width="1.8" filter="url(#box-shadow)"/>
+              <circle cx="42" cy="18" r="4" fill="#0284c7" />
+              <text x="42" y="35" font-family="Jua" font-size="13" fill="#1e293b" text-anchor="middle">이어도</text>
+            </g>
+          </g>
+
+          <!-- 4. 교과서 정품 텍스트 라벨 (학생들이 혼동 없도록 정확한 위치에 크고 또렷하게 표기) -->
+          <g id="labels-layer">
+            <!-- 1. 서울 -->
+            <text x="224" y="184" class="map-badge-text map-badge-city fill-rose-900">서울특별시</text>
+            <!-- 2. 인천 -->
+            <text x="165" y="165" class="map-badge-text map-badge-city fill-sky-950">인천광역시</text>
+            <!-- 3. 경기 -->
+            <text x="240" y="222" class="map-badge-text text-[15px] fill-cyan-950">경기도</text>
+            <!-- 4. 강원 -->
+            <text x="350" y="150" class="map-badge-text text-[16px] fill-amber-950">강원도</text>
+            <text x="350" y="168" class="map-sub-text">(강원특별자치도)</text>
+            <!-- 5. 충북 -->
+            <text x="325" y="300" class="map-badge-text text-[14px] fill-orange-950">충청북도</text>
+            <!-- 6. 충남 -->
+            <text x="210" y="335" class="map-badge-text text-[14px] fill-emerald-950">충청남도</text>
+            <!-- 8. 세종 -->
+            <text x="254" y="295" class="map-badge-text text-[11px] fill-emerald-900">세종특별자치시</text>
+            <!-- 7. 대전 -->
+            <text x="272" y="380" class="map-badge-text map-badge-city fill-purple-950">대전광역시</text>
+            <!-- 9. 전북 -->
+            <text x="245" y="425" class="map-badge-text text-[14px] fill-indigo-950">전라북도</text>
+            <text x="245" y="440" class="map-sub-text">(전북특별자치도)</text>
+            <!-- 10. 광주 -->
+            <text x="218" y="480" class="map-badge-text map-badge-city fill-lime-950">광주광역시</text>
+            <!-- 11. 전남 -->
+            <text x="235" y="525" class="map-badge-text text-[15px] fill-lime-950">전라남도</text>
+            <!-- 13. 경북 -->
+            <text x="430" y="340" class="map-badge-text text-[15px] fill-teal-950">경상북도</text>
+            <!-- 12. 대구 -->
+            <text x="400" y="432" class="map-badge-text map-badge-city fill-amber-950">대구광역시</text>
+            <!-- 16. 울산 -->
+            <text x="470" y="410" class="map-badge-text map-badge-city fill-rose-950">울산광역시</text>
+            <!-- 14. 경남 -->
+            <text x="360" y="475" class="map-badge-text text-[15px] fill-amber-950">경상남도</text>
+            <!-- 15. 부산 -->
+            <text x="442" y="515" class="map-badge-text map-badge-city fill-orange-950">부산광역시</text>
+            <!-- 17. 제주 -->
+            <text x="205" y="750" class="map-badge-text text-[15px] fill-pink-950">제주특별자치도</text>
+          </g>
+        </svg>
+      </div>
+
+      <!-- 지도 하단 정품 인증 캡션 -->
+      <div class="mt-2.5 text-xs text-slate-600 text-center font-bold bg-slate-100 py-1.5 px-4 rounded-xl border border-slate-200">
+        📌 대한민국 사회과 부도·교과서에 나오는 17개 시·도 행정구역과 우리 영토(독도, 울릉도, 이어도) 모습 그대로예요.
+      </div>
+    </section>
+
+    <!-- 우측: 정보 상세 카드 & 미션/도장 패널 (5컬럼) -->
+    <section class="lg:col-span-5 flex flex-col gap-4">
+      
+      <!-- 1. 선택 지역 상세 설명 카드 -->
+      <div id="detail-card" class="bg-white rounded-3xl p-5 shadow-xl border-4 border-rose-300 transition-all duration-300">
+        <!-- 헤더 (이름 및 음성듣기) -->
+        <div class="flex items-center justify-between border-b-2 border-slate-100 pb-3 mb-3">
+          <div class="flex items-center gap-3">
+            <span id="region-badge-icon" class="text-3xl p-2 bg-rose-50 border border-rose-200 rounded-2xl shadow-inner">🗼</span>
+            <div>
+              <span id="region-type-label" class="text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 px-3 py-0.5 rounded-full uppercase">대한민국의 수도</span>
+              <h2 id="region-name" class="text-2xl md:text-3xl font-jua text-slate-800 mt-0.5">서울특별시</h2>
+            </div>
+          </div>
+          <button onclick="speakCurrentRegion()" class="w-11 h-11 bg-sky-500 hover:bg-sky-600 text-white rounded-2xl flex items-center justify-center text-lg shadow-md active:scale-95 transition" title="지역 설명 소리로 듣기">
+            <i class="fa-solid fa-volume-high"></i>
+          </button>
+        </div>
+
+        <!-- 본문 설명 (특수교육 맞춤 쉬운 말) -->
+        <div class="space-y-3">
+          <div class="bg-amber-50/90 p-3.5 rounded-2xl border-2 border-amber-200 shadow-sm">
+            <p id="region-desc" class="text-base text-slate-800 leading-relaxed font-semibold">
+              우리나라의 수도이며 한강과 남산서울타워가 있는 중심 도시예요!
+            </p>
+          </div>
+
+          <!-- 상징/대표 명소 태그 -->
+          <div>
+            <h3 class="text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider flex items-center gap-1.5">
+              <i class="fa-solid fa-star text-amber-400"></i> 대표적인 랜드마크 & 상징
+            </h3>
+            <div id="region-tags" class="flex flex-wrap gap-2">
+              <!-- JS 동적 생성 -->
+            </div>
+          </div>
+
+          <!-- 지리적 위치 힌트 -->
+          <div class="flex items-center gap-2.5 text-xs md:text-sm text-slate-600 bg-slate-50 p-2.5 rounded-2xl border border-slate-200 font-medium">
+            <i class="fa-solid fa-location-dot text-rose-500 text-base"></i>
+            <span id="region-loc-hint">지도 북서쪽(위쪽 왼쪽), 경기도 한가운데 자리 잡고 있어요.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. 인터랙티브 미션/퀴즈 카드 -->
+      <div id="mission-card" class="bg-white rounded-3xl p-5 shadow-xl border-4 border-indigo-200 flex flex-col justify-between">
+        
+        <!-- 상태 상단 바 -->
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <span class="text-2xl">🎖️</span>
+            <h3 id="mission-title" class="text-lg md:text-xl font-jua text-indigo-900">도장 모으기 탐험판</h3>
+          </div>
+          <span class="text-xs font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 px-3 py-1.5 rounded-xl">
+            수집 완료: <span id="solved-count" class="text-lg font-jua text-indigo-600">0</span> / 17
+          </span>
+        </div>
+
+        <!-- 위치 퀴즈 안내 영역 -->
+        <div id="quiz-control-area" class="hidden mb-3">
+          <div class="bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300 rounded-2xl p-3.5 text-center shadow-sm">
+            <span class="inline-block bg-amber-500 text-white text-xs font-bold px-2.5 py-0.5 rounded-full mb-1">찾아보세요</span>
+            <p id="quiz-question" class="text-lg md:text-xl font-jua text-amber-950 mt-0.5">
+              "돌하르방과 아름다운 한라산이 있는 제주도는 어디일까요?"
+            </p>
+          </div>
+        </div>
+
+        <!-- 카드 매칭 선택지 영역 -->
+        <div id="card-choice-area" class="hidden grid grid-cols-2 gap-2 mb-3 max-h-40 overflow-y-auto pr-1 custom-scroll">
+          <!-- 동적 4개 매칭 카드 -->
+        </div>
+
+        <!-- 17개 행정구역 도장판 (배지 그리드) -->
+        <div class="border-t border-slate-200 pt-2.5">
+          <p class="text-xs font-bold text-slate-400 mb-2">내가 찾은 대한민국 시·도 스탬프</p>
+          <div id="stamp-grid" class="grid grid-cols-6 gap-1.5">
+            <!-- 17개 도장 아이콘 렌더링 -->
+          </div>
+        </div>
+
+        <!-- 액션 버튼 -->
+        <div class="mt-3.5 flex gap-2">
+          <button onclick="resetBadges()" class="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center justify-center gap-1.5 transition border border-slate-200">
+            <i class="fa-solid fa-arrows-rotate"></i> 도장판 다시 시작
+          </button>
+          <button onclick="celebrateAchievement()" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-400 to-orange-400 hover:from-amber-500 hover:to-orange-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition">
+            🎉 팡파르
+          </button>
+        </div>
+
+      </div>
+
+    </section>
+  </main>
+
+  <!-- 3. 하단 빠른 선택 바 -->
+  <footer class="bg-white border-t-2 border-slate-200 p-2.5 shadow-inner">
+    <div class="max-w-7xl mx-auto flex items-center gap-2 overflow-x-auto py-0.5 custom-scroll">
+      <span class="text-xs font-bold text-slate-500 whitespace-nowrap pl-2 flex items-center gap-1.5">
+        <i class="fa-solid fa-hand-pointer text-sky-500"></i> 바로 가기:
+      </span>
+      <div id="quick-links" class="flex items-center gap-1.5 whitespace-nowrap">
+        <!-- 17개 시도 칩 렌더링 -->
+      </div>
+    </div>
+  </footer>
+
+  <!-- 4. 정답 / 축하 모달 팝업 -->
+  <div id="congrats-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-3xl p-6 md:p-8 max-w-sm w-full text-center shadow-2xl border-4 border-amber-300 pop-in">
+      <div class="text-6xl mb-3" id="modal-emoji">🏆</div>
+      <h3 id="modal-title" class="text-2xl font-jua text-slate-800">참 잘했어요!</h3>
+      <p id="modal-desc" class="text-slate-600 mt-2 mb-6 font-medium">우리나라 지도를 멋지게 찾아냈어요!</p>
+      <button onclick="closeModal()" class="w-full py-3.5 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-600 hover:to-indigo-700 text-white font-jua text-xl rounded-2xl shadow-lg active:scale-95 transition">
+        다음으로 넘어가기
+      </button>
+    </div>
+  </div>
+
+  <!-- JavaScript 애플리케이션 로직 -->
+  <script>
+    /* ============================================================
+     * 1. 17개 행정구역 데이터 정의 (교과서 기준 위치 & 친절한 해설)
+     * ============================================================ */
+    const REGIONS_DATA = [
+      {
+        id: "seoul",
+        name: "서울특별시",
+        short: "서울",
+        type: "대한민국의 수도",
+        icon: "🗼",
+        desc: "우리나라의 자랑스러운 수도예요! 한강이 흐르고 남산서울타워와 유서 깊은 경복궁이 있어요.",
+        features: ["🗼 남산타워", "🏯 경복궁", "🌊 한강"],
+        hint: "지도 북서쪽(위쪽 왼쪽), 경기도 한가운데 쏙 들어가 있어요.",
+        color: "#ec8ea3"
+      },
+      {
+        id: "incheon",
+        name: "인천광역시",
+        short: "인천",
+        type: "광역시",
+        icon: "✈️",
+        desc: "세계로 뻗어나가는 인천국제공항과 넓은 바다 항구가 있는 서해의 대표 관문 도시예요.",
+        features: ["✈️ 인천공항", "🎡 월미도", "🥟 차이나타운"],
+        hint: "서울의 바로 서쪽(왼쪽), 강화도와 서해 바다를 접하고 있어요.",
+        color: "#e26d85"
+      },
+      {
+        id: "gyeonggi",
+        name: "경기도",
+        short: "경기",
+        type: "도",
+        icon: "🏰",
+        desc: "서울과 인천을 도넛처럼 감싸고 있으며, 많은 친구들과 이웃이 함께 살아가는 활기찬 곳이에요.",
+        features: ["🏰 수원화성", "🎠 에버랜드", "🌿 DMZ 평화공원"],
+        hint: "지도 위쪽에서 서울과 인천을 든든하게 둘러싸고 있는 넓은 하늘색 지역이에요.",
+        color: "#70b9d6"
+      },
+      {
+        id: "gangwon",
+        name: "강원특별자치도",
+        short: "강원",
+        type: "특별자치도 (강원도)",
+        icon: "🏔️",
+        desc: "높푸른 설악산과 시원하게 펼쳐진 동해 바다가 아름답고 맛있는 감자가 유명해요.",
+        features: ["🏔️ 설악산", "🥔 맛있는 감자", "🌊 경포대 동해바다"],
+        hint: "지도 오른쪽 위(동북쪽)를 시원하게 차지하고 있는 산과 바다의 고장이에요.",
+        color: "#c8ad8d"
+      },
+      {
+        id: "chungbuk",
+        name: "충청북도",
+        short: "충북",
+        type: "도",
+        icon: "🍎",
+        desc: "바다에 닿지 않는 우리나라 유일의 내륙도로, 맑은 충주호와 속리산 푸른 숲이 자랑이에요.",
+        features: ["🏞️ 충주호", "🍎 달콤한 사과", "⛰️ 속리산"],
+        hint: "우리나라 한가운데에 바다 없이 산과 호수로 안겨 있는 곳이에요.",
+        color: "#e88778"
+      },
+      {
+        id: "chungnam",
+        name: "충청남도",
+        short: "충남",
+        type: "도",
+        icon: "🌾",
+        desc: "서해 바다로 뻗은 태안반도와 갯벌, 찬란한 백제 역사가 살아 숨 쉬는 공주·부여가 있어요.",
+        features: ["🦀 서해안 갯벌", "👑 백제 무령왕릉", "🌾 내포평야"],
+        hint: "지도 서쪽(왼쪽) 허리에서 서해 바다를 향해 삐죽 뻗어 있는 곳이에요.",
+        color: "#66bb9a"
+      },
+      {
+        id: "sejong",
+        name: "세종특별자치시",
+        short: "세종",
+        type: "특별자치시",
+        icon: "🏢",
+        desc: "나라의 중요한 일들을 돌보는 정부 청사들이 모여 있는 아름다운 스마트 행정 도시예요.",
+        features: ["🏢 정부청사", "🌳 세종호수공원", "📜 세종대왕"],
+        hint: "충청남도와 대전광역시 사이 작은 초록색 구역이에요.",
+        color: "#38a169"
+      },
+      {
+        id: "daejeon",
+        name: "대전광역시",
+        short: "대전",
+        type: "광역시",
+        icon: "🚀",
+        desc: "과학 기술 연구소와 꿈돌이가 반겨주는 과학의 중심 도시이자 철도가 만나는 교통의 요지예요.",
+        features: ["🚀 엑스포 과학공원", "🥖 유명한 튀김소보로", "🚅 KTX 철도"],
+        hint: "충청남·북도 경계 아래쪽에 자리 잡은 교통 과학 도시예요.",
+        color: "#b8759e"
+      },
+      {
+        id: "jeonbuk",
+        name: "전북특별자치도",
+        short: "전북",
+        type: "특별자치도 (전라북도)",
+        icon: "🍚",
+        desc: "고즈넉한 전주 한옥마을과 맛깔스러운 전주비빔밥으로 유명한 맛과 멋의 고장이에요.",
+        features: ["🏮 전주 한옥마을", "🍚 전주비빔밥", "⛰️ 신비한 마이산"],
+        hint: "충청남도 바로 남쪽(아래), 호남평야가 넓게 펼쳐진 서해 쪽 보라색 지역이에요.",
+        color: "#716cb0"
+      },
+      {
+        id: "gwangju",
+        name: "광주광역시",
+        short: "광주",
+        type: "광역시",
+        icon: "🎨",
+        desc: "우뚝 솟은 무등산과 다채로운 문화 예술, 맛있는 남도 음식이 반겨주는 빛의 고을이에요.",
+        features: ["⛰️ 무등산 서석대", "🎨 아시아문화전당", "🍉 무등산 수박"],
+        hint: "전라남도 한가운데 보금자리처럼 쏙 들어가 있어요.",
+        color: "#99cf64"
+      },
+      {
+        id: "jeonnam",
+        name: "전라남도",
+        short: "전남",
+        type: "도",
+        icon: "🚢",
+        desc: "여수의 낭만 밤바다와 순천만 갈대밭, 그리고 남해의 예쁜 섬들이 보석처럼 펼쳐져 있어요.",
+        features: ["🌉 여수 밤바다", "🌾 순천만 습지", "🎋 담양 죽녹원"],
+        hint: "지도 남서쪽(아래 왼쪽) 끝, 섬들이 가장 많은 연두색 지역이에요.",
+        color: "#7cb342"
+      },
+      {
+        id: "gyeongbuk",
+        name: "경상북도",
+        short: "경북",
+        type: "도",
+        icon: "⛩️",
+        desc: "천년 신라의 경주 불국사와 하회마을, 동해의 소중한 우리 땅 울릉도와 독도를 품고 있어요.",
+        features: ["⛩️ 경주 첨성대", "🏝️ 우리 땅 독도·울릉도", "🪵 안동 하회마을"],
+        hint: "지도 오른쪽(동쪽)에 넓게 펼쳐진 청록색 지역으로 독도와 울릉도까지 포함해요.",
+        color: "#3b8f85"
+      },
+      {
+        id: "daegu",
+        name: "대구광역시",
+        short: "대구",
+        type: "광역시",
+        icon: "🍎",
+        desc: "팔공산과 활기찬 서문시장이 있는 영남 내륙의 중심 분지 대도시예요.",
+        features: ["⛰️ 팔공산", "🍎 대구 사과", "🛍️ 서문시장"],
+        hint: "경상북도 안쪽에 갈색으로 폭 안겨 있는 대도시예요.",
+        color: "#77584e"
+      },
+      {
+        id: "ulsan",
+        name: "울산광역시",
+        short: "울산",
+        type: "광역시",
+        icon: "🐋",
+        desc: "멋진 자동차와 큰 배를 만드는 산업 도시이자 장생포 귀여운 고래를 만날 수 있는 곳이에요.",
+        features: ["🚗 자동차 산업", "🐋 장생포 고래마을", "🌅 간절곶 일출"],
+        hint: "동해 바다를 접하고 있으며 부산 바로 위쪽에 있는 분홍색 도시예요.",
+        color: "#e35b78"
+      },
+      {
+        id: "gyeongnam",
+        name: "경상남도",
+        short: "경남",
+        type: "도",
+        icon: "⚓",
+        desc: "아름다운 남해 한려수도와 지리산 자락, 거대한 조선소가 있는 살기 좋은 남해안 지역이에요.",
+        features: ["🚢 웅장한 조선소", "🌸 진해 벚꽃", "🌊 통영 바다"],
+        hint: "지도 남쪽 바다를 따라 가로로 넓게 뻗은 노란색 지역이에요.",
+        color: "#f7d358"
+      },
+      {
+        id: "busan",
+        name: "부산광역시",
+        short: "부산",
+        type: "광역시",
+        icon: "🏖️",
+        desc: "우리나라 최대 무역항과 시원한 해운대 해수욕장, 싱싱한 자갈치시장이 있는 해양 수도예요.",
+        features: ["🏖️ 해운대 해수욕장", "🐟 자갈치시장", "🌉 광안대교"],
+        hint: "경상남도 오른쪽 아래, 동남쪽 바닷가 끝에 있는 주황색 도시예요.",
+        color: "#f39c6b"
+      },
+      {
+        id: "jeju",
+        name: "제주특별자치도",
+        short: "제주",
+        type: "특별자치도",
+        icon: "🍊",
+        desc: "우리나라에서 가장 높은 한라산과 달콤한 감귤, 현무암 돌하르방이 있는 평화로운 화산섬이에요.",
+        features: ["🍊 달콤한 감귤", "🗿 돌하르방", "🌋 높은 한라산"],
+        hint: "지도 가장 아래쪽 남쪽 바다에 둥실 떠 있는 제일 큰 아름다운 섬이에요.",
+        color: "#f0b0c8"
+      }
+    ];
+
+    /* ============================================================
+     * 2. 합성 사운드 효과 (Tone.js)
+     * ============================================================ */
+    let synth = null;
+    function initSynth() {
+      if (!synth && window.Tone) {
+        synth = new Tone.PolySynth(Tone.Synth, {
+          oscillator: { type: "triangle" },
+          envelope: { attack: 0.03, decay: 0.1, sustain: 0.25, release: 0.7 }
+        }).toDestination();
+      }
+    }
+
+    function playSound(type) {
+      try {
+        initSynth();
+        if (Tone.context.state !== 'running') {
+          Tone.context.resume();
+        }
+        if (type === 'click') {
+          synth.triggerAttackRelease("C5", "16n");
+        } else if (type === 'correct') {
+          synth.triggerAttackRelease(["C5", "E5", "G5", "C6"], "8n");
+        } else if (type === 'try') {
+          synth.triggerAttackRelease(["D4", "F4"], "16n");
+        } else if (type === 'fanfare') {
+          synth.triggerAttackRelease(["C5", "G5", "C6", "E6"], "4n");
+        }
+      } catch (e) {
+        // 브라우저 자동 재생 정책 대비
+      }
+    }
+
+    /* ============================================================
+     * 3. TTS 음성 합성 제어 (특수교육 친화적 또박또박 발화)
+     * ============================================================ */
+    let isTtsEnabled = true;
+    let lastSpokenText = "";
+
+    function toggleTTS() {
+      isTtsEnabled = !isTtsEnabled;
+      const icon = document.getElementById('tts-icon');
+      const btn = document.getElementById('tts-toggle');
+      if (isTtsEnabled) {
+        icon.className = "fa-solid fa-volume-high text-amber-800";
+        btn.classList.replace('bg-slate-200', 'bg-amber-100');
+        speakText("소리 안내를 켰습니다.");
+      } else {
+        icon.className = "fa-solid fa-volume-xmark text-slate-400";
+        btn.classList.replace('bg-amber-100', 'bg-slate-200');
+        if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+      }
+    }
+
+    function speakText(text) {
+      if (!isTtsEnabled || !('speechSynthesis' in window)) return;
+      window.speechSynthesis.cancel();
+      
+      lastSpokenText = text;
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'ko-KR';
+      utterance.rate = 0.88; // 학생의 인지를 위해 부드럽고 여유 있는 속도
+      utterance.pitch = 1.05;
+      window.speechSynthesis.speak(utterance);
+    }
+
+    function repeatGuidance() {
+      if (lastSpokenText) {
+        speakText(lastSpokenText);
+      } else {
+        speakText("지도에서 알고 싶은 지역을 콕 눌러보세요.");
+      }
+    }
+
+    /* ============================================================
+     * 4. 전역 상태 및 모드 관리
+     * ============================================================ */
+    let currentMode = 'explore'; // 'explore' | 'quiz' | 'card'
+    let selectedRegionId = 'seoul';
+    let currentQuizRegion = null;
+    let selectedCardRegion = null;
+    let solvedBadges = new Set();
+
+    /* ============================================================
+     * 5. 초기화 및 이벤트 연결
+     * ============================================================ */
+    window.addEventListener('DOMContentLoaded', () => {
+      renderQuickLinks();
+      renderStampGrid();
+      bindMapEvents();
+      selectRegion('seoul');
+      speakText("우리나라 지도 탐험을 시작해요! 지도를 자유롭게 눌러보세요.");
+    });
+
+    function bindMapEvents() {
+      const paths = document.querySelectorAll('.province-path');
+      paths.forEach(p => {
+        p.addEventListener('click', (e) => {
+          const regionId = e.currentTarget.getAttribute('data-id');
+          handleMapClick(regionId);
+        });
+      });
+    }
+
+    function renderQuickLinks() {
+      const container = document.getElementById('quick-links');
+      container.innerHTML = '';
+      REGIONS_DATA.forEach(r => {
+        const btn = document.createElement('button');
+        btn.className = `px-3 py-1.5 rounded-xl font-jua text-sm transition-all border border-slate-200 bg-white hover:bg-sky-50 hover:border-sky-300 flex items-center gap-1.5 shadow-sm`;
+        btn.innerHTML = `<span>${r.icon}</span> <span>${r.short}</span>`;
+        btn.onclick = () => {
+          playSound('click');
+          handleMapClick(r.id);
+        };
+        container.appendChild(btn);
+      });
+    }
+
+    function renderStampGrid() {
+      const grid = document.getElementById('stamp-grid');
+      grid.innerHTML = '';
+      REGIONS_DATA.forEach(r => {
+        const hasStamp = solvedBadges.has(r.id);
+        const stamp = document.createElement('div');
+        stamp.id = `stamp-item-${r.id}`;
+        stamp.className = `aspect-square rounded-2xl flex flex-col items-center justify-center p-1 text-center transition-all ${
+          hasStamp ? 'bg-amber-100 border-2 border-amber-400 shadow-sm scale-100' : 'bg-slate-100 border border-slate-200 opacity-40'
+        }`;
+        stamp.title = r.name;
+        stamp.innerHTML = `
+          <span class="text-xl md:text-2xl">${hasStamp ? r.icon : '⚪'}</span>
+          <span class="text-[10px] font-bold text-slate-700 mt-0.5 truncate w-full">${r.short}</span>
+        `;
+        grid.appendChild(stamp);
+      });
+
+      document.getElementById('solved-count').textContent = solvedBadges.size;
+    }
+
+    /* ============================================================
+     * 6. 모드 변경 함수
+     * ============================================================ */
+    function setMode(mode) {
+      playSound('click');
+      currentMode = mode;
+      
+      const btnExplore = document.getElementById('btn-mode-explore');
+      const btnQuiz = document.getElementById('btn-mode-quiz');
+      const btnCard = document.getElementById('btn-mode-card');
+      const instIcon = document.getElementById('inst-icon');
+      const instText = document.getElementById('inst-text');
+      const hintBtn = document.getElementById('hint-btn');
+      const quizArea = document.getElementById('quiz-control-area');
+      const cardArea = document.getElementById('card-choice-area');
+      const missionTitle = document.getElementById('mission-title');
+
+      [btnExplore, btnQuiz, btnCard].forEach(b => {
+        b.className = "px-4 py-2 rounded-2xl font-jua text-base transition-all shadow-sm flex items-center gap-2 bg-white text-slate-600 hover:bg-slate-100 border-2 border-slate-200";
+      });
+
+      clearMapHighlights();
+
+      if (mode === 'explore') {
+        btnExplore.className = "px-4 py-2 rounded-2xl font-jua text-base transition-all shadow-sm flex items-center gap-2 bg-sky-600 text-white shadow-sky-200";
+        instIcon.textContent = "👆";
+        instText.textContent = "지도에서 알고 싶은 곳을 콕 눌러보세요!";
+        hintBtn.classList.add('hidden');
+        quizArea.classList.add('hidden');
+        cardArea.classList.add('hidden');
+        missionTitle.textContent = "도장 모으기 탐험판";
+        speakText("자유 탐험 모드예요. 지도를 눌러 지역을 배워보세요.");
+      } 
+      else if (mode === 'quiz') {
+        btnQuiz.className = "px-4 py-2 rounded-2xl font-jua text-base transition-all shadow-sm flex items-center gap-2 bg-amber-500 text-white shadow-amber-200";
+        instIcon.textContent = "🎯";
+        instText.textContent = "질문을 듣고 지도에서 알맞은 지역을 콕 찍어보세요!";
+        hintBtn.classList.remove('hidden');
+        quizArea.classList.remove('hidden');
+        cardArea.classList.add('hidden');
+        missionTitle.textContent = "반짝반짝 위치 퀴즈";
+        generateNewQuiz();
+      } 
+      else if (mode === 'card') {
+        btnCard.className = "px-4 py-2 rounded-2xl font-jua text-base transition-all shadow-sm flex items-center gap-2 bg-emerald-500 text-white shadow-emerald-200";
+        instIcon.textContent = "🧩";
+        instText.textContent = "카드를 확인하고 지도에서 알맞은 위치를 찾아주세요!";
+        hintBtn.classList.remove('hidden');
+        quizArea.classList.add('hidden');
+        cardArea.classList.remove('hidden');
+        missionTitle.textContent = "카드와 지도 짝 맞추기";
+        setupCardMatching();
+      }
+    }
+
+    function resetToExplore() {
+      setMode('explore');
+    }
+
+    /* ============================================================
+     * 7. 지도 클릭 핸들러
+     * ============================================================ */
+    function handleMapClick(regionId) {
+      if (!regionId) return;
+      const data = REGIONS_DATA.find(r => r.id === regionId);
+      if (!data) return;
+
+      if (currentMode === 'explore') {
+        playSound('click');
+        selectRegion(regionId);
+        addBadge(regionId);
+        speakCurrentRegion();
+      } 
+      else if (currentMode === 'quiz') {
+        checkQuizAnswer(regionId);
+      } 
+      else if (currentMode === 'card') {
+        checkCardMatch(regionId);
+      }
+    }
+
+    /* ============================================================
+     * 8. 지역 정보 갱신 & 하이라이트
+     * ============================================================ */
+    function selectRegion(regionId) {
+      selectedRegionId = regionId;
+      const data = REGIONS_DATA.find(r => r.id === regionId);
+      if (!data) return;
+
+      // 지도 시각적 활성화
+      clearMapHighlights();
+      const activeElements = document.querySelectorAll(`[data-id="${regionId}"]`);
+      activeElements.forEach(el => el.classList.add('active-target'));
+
+      // 상세 패널 갱신
+      document.getElementById('region-badge-icon').textContent = data.icon;
+      document.getElementById('region-type-label').textContent = data.type;
+      document.getElementById('region-name').textContent = data.name;
+      document.getElementById('region-desc').textContent = data.desc;
+      document.getElementById('region-loc-hint').textContent = data.hint;
+
+      // 태그 렌더링
+      const tagsContainer = document.getElementById('region-tags');
+      tagsContainer.innerHTML = '';
+      data.features.forEach(feat => {
+        const span = document.createElement('span');
+        span.className = "px-3 py-1 bg-slate-100 text-slate-800 text-xs md:text-sm font-jua rounded-xl flex items-center gap-1.5 shadow-sm border border-slate-200";
+        span.textContent = feat;
+        tagsContainer.appendChild(span);
+      });
+
+      // 카드 테두리 강조 색상
+      const card = document.getElementById('detail-card');
+      card.style.borderColor = data.color;
+    }
+
+    function speakCurrentRegion() {
+      const data = REGIONS_DATA.find(r => r.id === selectedRegionId);
+      if (data) {
+        speakText(`${data.name}! ${data.desc}`);
+      }
+    }
+
+    function clearMapHighlights() {
+      document.querySelectorAll('.province-path').forEach(el => {
+        el.classList.remove('active-target', 'highlight-hint');
+      });
+    }
+
+    /* ============================================================
+     * 9. 퀴즈 모드
+     * ============================================================ */
+    function generateNewQuiz() {
+      const unvisited = REGIONS_DATA.filter(r => !solvedBadges.has(r.id));
+      const pool = unvisited.length > 0 ? unvisited : REGIONS_DATA;
+      currentQuizRegion = pool[Math.floor(Math.random() * pool.length)];
+
+      const questionElement = document.getElementById('quiz-question');
+      
+      const questionPatterns = [
+        `"${currentQuizRegion.features[0]}이(가) 있는 ${currentQuizRegion.name}은(는) 어디일까요?"`,
+        `"지도에서 [${currentQuizRegion.name}]을(를) 콕 찾아보세요!"`,
+        `"${currentQuizRegion.desc.split('!')[0]}인 [${currentQuizRegion.short}]을(를) 찾아볼까요?"`
+      ];
+      const qText = questionPatterns[Math.floor(Math.random() * questionPatterns.length)];
+      questionElement.textContent = qText;
+
+      speakText(qText);
+    }
+
+    function checkQuizAnswer(clickedId) {
+      if (!currentQuizRegion) return;
+
+      if (clickedId === currentQuizRegion.id) {
+        playSound('correct');
+        addBadge(clickedId);
+        selectRegion(clickedId);
+        triggerConfetti();
+        showModal(`정답이에요!`, `[${currentQuizRegion.name}]을(를) 정확하게 찾았어요! 아주 멋져요!`);
+      } else {
+        playSound('try');
+        const clickedData = REGIONS_DATA.find(r => r.id === clickedId);
+        speakText(`그곳은 ${clickedData ? clickedData.name : '다른 곳'}이에요. 다시 한 번 힘을 내보세요!`);
+        
+        // 반짝 힌트
+        const targetPaths = document.querySelectorAll(`[data-id="${currentQuizRegion.id}"]`);
+        targetPaths.forEach(tp => {
+          tp.classList.add('highlight-hint');
+          setTimeout(() => tp.classList.remove('highlight-hint'), 1600);
+        });
+      }
+    }
+
+    function giveHint() {
+      playSound('click');
+      let targetId = null;
+      if (currentMode === 'quiz' && currentQuizRegion) {
+        targetId = currentQuizRegion.id;
+      } else if (currentMode === 'card' && selectedCardRegion) {
+        targetId = selectedCardRegion.id;
+      }
+
+      if (targetId) {
+        const data = REGIONS_DATA.find(r => r.id === targetId);
+        speakText(`힌트예요! ${data.hint}`);
+        const elements = document.querySelectorAll(`[data-id="${targetId}"]`);
+        elements.forEach(el => {
+          el.classList.add('highlight-hint');
+          setTimeout(() => el.classList.remove('highlight-hint'), 2500);
+        });
+      } else {
+        speakText("찾을 지역을 먼저 정해보세요!");
+      }
+    }
+
+    /* ============================================================
+     * 10. 카드 매칭 모드
+     * ============================================================ */
+    function setupCardMatching() {
+      const cardArea = document.getElementById('card-choice-area');
+      cardArea.innerHTML = '';
+
+      const shuffled = [...REGIONS_DATA].sort(() => 0.5 - Math.random()).slice(0, 4);
+      selectedCardRegion = shuffled[0];
+
+      shuffled.forEach(item => {
+        const cardBtn = document.createElement('button');
+        cardBtn.className = `p-2.5 rounded-2xl font-jua border-2 text-left transition-all flex items-center gap-2.5 ${
+          item.id === selectedCardRegion.id ? 'border-emerald-500 bg-emerald-50 shadow-md ring-2 ring-emerald-300' : 'border-slate-200 bg-white hover:bg-slate-50'
+        }`;
+        cardBtn.id = `choice-card-${item.id}`;
+        cardBtn.innerHTML = `
+          <span class="text-2xl">${item.icon}</span>
+          <div>
+            <div class="text-sm md:text-base font-bold text-slate-800">${item.short}</div>
+            <div class="text-[11px] text-slate-500">${item.features[0]}</div>
+          </div>
+        `;
+        cardBtn.onclick = () => {
+          playSound('click');
+          selectCardTarget(item.id);
+        };
+        cardArea.appendChild(cardBtn);
+      });
+
+      speakText(`'${selectedCardRegion.name}' 카드가 선택되었어요. 지도에서 어디에 있는지 찾아보세요!`);
+    }
+
+    function selectCardTarget(regionId) {
+      selectedCardRegion = REGIONS_DATA.find(r => r.id === regionId);
+      document.querySelectorAll('#card-choice-area button').forEach(b => {
+        b.className = "p-2.5 rounded-2xl font-jua border-2 border-slate-200 bg-white text-left transition-all flex items-center gap-2.5 hover:bg-slate-50";
+      });
+      const activeCard = document.getElementById(`choice-card-${regionId}`);
+      if (activeCard) {
+        activeCard.className = "p-2.5 rounded-2xl font-jua border-2 border-emerald-500 bg-emerald-50 shadow-md ring-2 ring-emerald-300 text-left transition-all flex items-center gap-2.5";
+      }
+      speakText(`${selectedCardRegion.name} 카드예요. 지도에서 위치를 콕 눌러주세요!`);
+    }
+
+    function checkCardMatch(clickedId) {
+      if (!selectedCardRegion) return;
+
+      if (clickedId === selectedCardRegion.id) {
+        playSound('correct');
+        addBadge(clickedId);
+        selectRegion(clickedId);
+        triggerConfetti();
+        showModal(`짝 맞추기 성공!`, `[${selectedCardRegion.name}] 카드와 지도를 바르게 연결했어요!`);
+      } else {
+        playSound('try');
+        speakText(`그곳은 다른 지역이에요. ${selectedCardRegion.hint}`);
+      }
+    }
+
+    /* ============================================================
+     * 11. 스탬프 및 축하 피드백
+     * ============================================================ */
+    function addBadge(regionId) {
+      if (!solvedBadges.has(regionId)) {
+        solvedBadges.add(regionId);
+        renderStampGrid();
+        
+        if (solvedBadges.size === REGIONS_DATA.length) {
+          setTimeout(() => {
+            playSound('fanfare');
+            triggerConfetti(true);
+            showModal("🏆 대한민국 지도 마스터!", "우리나라 17개 행정구역을 모두 탐험했어요! 정말 훌륭합니다!");
+          }, 600);
+        }
+      }
+    }
+
+    function resetBadges() {
+      playSound('click');
+      solvedBadges.clear();
+      renderStampGrid();
+      speakText("도장판을 깨끗하게 비웠어요. 처음부터 다시 신나게 탐험해 봐요!");
+    }
+
+    function triggerConfetti(grand = false) {
+      if (typeof confetti === 'function') {
+        confetti({
+          particleCount: grand ? 160 : 70,
+          spread: grand ? 110 : 70,
+          origin: { y: 0.6 }
+        });
+      }
+    }
+
+    function celebrateAchievement() {
+      playSound('fanfare');
+      triggerConfetti(true);
+      speakText("정말 자랑스러워요! 우리 멋진 학생에게 박수를 보냅니다!");
+    }
+
+    /* ============================================================
+     * 12. 모달 팝업 제어
+     * ============================================================ */
+    function showModal(title, desc) {
+      const modal = document.getElementById('congrats-modal');
+      document.getElementById('modal-title').textContent = title;
+      document.getElementById('modal-desc').textContent = desc;
+      modal.classList.remove('hidden');
+      speakText(`${title} ${desc}`);
+    }
+
+    function closeModal() {
+      playSound('click');
+      document.getElementById('congrats-modal').classList.add('hidden');
+      if (currentMode === 'quiz') {
+        generateNewQuiz();
+      } else if (currentMode === 'card') {
+        setupCardMatching();
+      }
+    }
+  </script>
+</body>
+</html>
